@@ -1,0 +1,223 @@
+Description: >
+  This template deploys web server auto scaling group in 2 private subnets with
+  frontend as application load balancer configured in 2 public subnets.
+
+Parameters:
+
+  EnvironmentName:
+    Type: String
+    Description: Please enter environment name, used as part of value for Name tag
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Please enter the vpc id to deploy the resources
+
+  WebServerImageId:
+    Type: AWS::EC2::Image::Id
+    Description: Please enter an AMI of ubuntu 18
+
+  WebServerInstanceType:
+    Type: String
+    Description: Please enter the instance type for the web server
+
+  PrivateSubnetId1:
+    Type: AWS::EC2::Subnet::Id
+    Description: Please enter the private subnet 1 id
+
+  PrivateSubnetId2:
+    Type: AWS::EC2::Subnet::Id
+    Description: Please enter the private subnet 2 id
+
+  PublicSubnetId1:
+    Type: AWS::EC2::Subnet::Id
+    Description: Please enter the public subnet 1 id
+
+  PublicSubnetId2:
+    Type: AWS::EC2::Subnet::Id
+    Description: Please enter the public subnet 2 id
+
+Resources:
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http internet traffic for application load balancer on port 80
+      GroupName: ALB SG
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} ALB SG
+
+  WebServersSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow only application load balancer traffic on port 80
+      GroupName: WebServers SG
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 0
+          IpProtocol: tcp
+          ToPort: 65535
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} WebServers SG
+
+  ALBSecurityGroupEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      DestinationSecurityGroupId: !Ref WebServersSecurityGroup
+      FromPort: 80
+      GroupId: !Ref ALBSecurityGroup
+      IpProtocol: tcp
+      ToPort: 80
+
+  WebServersSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      FromPort: 80
+      GroupId: !Ref WebServersSecurityGroup
+      IpProtocol: tcp
+      SourceSecurityGroupId: !Ref ALBSecurityGroup
+      ToPort: 80
+
+  UdacityProjectRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Description: Allow read only s3 permissions for ec2 resource(s)
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+      RoleName: !Ref EnvironmentName
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  UdacityProjectInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Ref EnvironmentName
+      Roles:
+        - !Ref UdacityProjectRole
+
+  WebServersLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 10
+            VolumeType: gp2
+      IamInstanceProfile: !Ref UdacityProjectInstanceProfile
+      ImageId: !Ref WebServerImageId
+      InstanceType: !Ref WebServerInstanceType
+      SecurityGroups:
+        - !Ref WebServersSecurityGroup
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          apt-get update -y
+          apt-get install unzip awscli apache2 -y
+          systemctl start apache2.service
+          cd /var/www/html
+          aws s3 cp s3://udacity-demo-1/udacity.zip .
+          unzip -o udacity.zip
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckPort: 80
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 3
+      HealthyThresholdCount: 3
+      Matcher:
+        HttpCode: 200
+      Port: 80
+      Protocol: HTTP
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 30
+      TargetType: instance
+      UnhealthyThresholdCount: 8
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} ALB WS TG
+
+  WebServersAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: Web Servers ASG
+      DesiredCapacity: 4
+      LaunchConfigurationName: !Ref WebServersLaunchConfiguration
+      MaxSize: 6
+      MinSize: 4
+      TargetGroupARNs:
+        - !Ref ALBTargetGroup
+      VPCZoneIdentifier:
+        - !Ref PrivateSubnetId1
+        - !Ref PrivateSubnetId2
+      Tags:
+        - Key: Name
+          PropagateAtLaunch: true
+          Value: !Sub ${EnvironmentName} Web Servers ASG
+
+  ALBWebServers:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Subnets:
+        - !Ref PublicSubnetId1
+        - !Ref PublicSubnetId2
+      Type: application
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} ALB Web Servers
+
+  ALBWebServersListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref ALBTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref ALBWebServers
+      Port: 80
+      Protocol: HTTP
+
+  ALBWebServersListenerRule1:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - TargetGroupArn: !Ref ALBTargetGroup
+          Type: forward
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /
+      ListenerArn: !Ref ALBWebServersListener
+      Priority: 1
+
+Outputs:
+  PublicUrlLoadBalancer:
+    Description: Public HTTP Url of the Load Balancer
+    Value: !Join ['', [ 'http://', !GetAtt ALBWebServers.DNSName]]
