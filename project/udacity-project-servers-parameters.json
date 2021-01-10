@@ -5,7 +5,7 @@
   },
   {
     "ParameterKey": "VpcId",
-    "ParameterValue": "vpc-0c6b90d4e68b938bf"
+    "ParameterValue": "vpc-0f7101d946b80a75a"
   },
   {
     "ParameterKey": "WebServerImageId",
@@ -17,18 +17,18 @@
   },
   {
     "ParameterKey": "PrivateSubnetId1",
-    "ParameterValue": "subnet-0b20c82de7d179b8f"
+    "ParameterValue": "subnet-01611243f4b6a8f26"
   },
   {
     "ParameterKey": "PrivateSubnetId2",
-    "ParameterValue": "subnet-00b8334194fd6e498"
+    "ParameterValue": "subnet-05dc0c657eb1943a2"
   },
   {
     "ParameterKey": "PublicSubnetId1",
-    "ParameterValue": "subnet-0a8e2f47ded7e9b33"
+    "ParameterValue": "subnet-0d82f14b74be9bafd"
   },
   {
     "ParameterKey": "PublicSubnetId2",
-    "ParameterValue": "subnet-06399d3955f469693"
+    "ParameterValue": "subnet-0af04a047ebb3d5e8"
   }
 ]
