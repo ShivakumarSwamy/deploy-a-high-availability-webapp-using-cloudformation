@@ -141,12 +141,12 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       HealthCheckEnabled: true
-      HealthCheckIntervalSeconds: 10
+      HealthCheckIntervalSeconds: 15
       HealthCheckPath: /
       HealthCheckPort: 80
       HealthCheckProtocol: HTTP
       HealthCheckTimeoutSeconds: 3
-      HealthyThresholdCount: 3
+      HealthyThresholdCount: 2
       Matcher:
         HttpCode: 200
       Port: 80
@@ -155,7 +155,7 @@ Resources:
         - Key: deregistration_delay.timeout_seconds
           Value: 30
       TargetType: instance
-      UnhealthyThresholdCount: 8
+      UnhealthyThresholdCount: 5
       VpcId: !Ref VpcId
       Tags:
         - Key: Name
@@ -166,6 +166,8 @@ Resources:
     Properties:
       AutoScalingGroupName: Web Servers ASG
       DesiredCapacity: 4
+      HealthCheckGracePeriod: 15
+      HealthCheckType: ELB
       LaunchConfigurationName: !Ref WebServersLaunchConfiguration
       MaxSize: 6
       MinSize: 4
